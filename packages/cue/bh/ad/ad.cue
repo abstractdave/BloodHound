@@ -194,6 +194,20 @@ IsACL: types.#StringEnum & {
 	representation: "isacl"
 }
 
+LimitedRightsCreated: types.#StringEnum & {
+	symbol:         "LimitedRightsCreated"
+	schema:         "ad"
+	name:           "Limited Rights Created"
+	representation: "limitedrightscreated"
+}
+
+IsInherited: types.#StringEnum & {
+	symbol:         "IsInherited"
+	schema:         "ad"
+	name:           "Is Inherited"
+	representation: "isinherited"
+}
+
 IsACLProtected: types.#StringEnum & {
 	symbol:         "IsACLProtected"
 	schema:         "ad"
@@ -747,6 +761,20 @@ OwnerSid: types.#StringEnum & {
  	representation: "ownersid"
 }
 
+GMSA: types.#StringEnum & {
+ 	symbol: "GMSA"
+ 	schema: "ad"
+ 	name: "GMSA"
+ 	representation: "gmsa"
+}
+
+MSA: types.#StringEnum & {
+ 	symbol: "MSA"
+ 	schema: "ad"
+ 	name: "MSA"
+ 	representation: "msa"
+}
+
 SMBSigning: types.#StringEnum & {
 	symbol: "SMBSigning"
 	schema: "ad"
@@ -787,6 +815,8 @@ Properties: [
 	HighValue,
 	BlocksInheritance,
 	IsACL,
+	LimitedRightsCreated,
+	IsInherited,
 	IsACLProtected,
 	IsDeleted,
 	Enforced,
@@ -866,7 +896,9 @@ Properties: [
 	OwnerSid,
 	LockoutObservationWindow,
 	SMBSigning,
-	RestrictOutboundNTLM
+	RestrictOutboundNTLM,
+	GMSA,
+	MSA
 ]
 
 // Kinds
@@ -1323,6 +1355,26 @@ CoerceAndRelayNTLMToSMB: types.#Kind & {
 	schema: "active_directory"
 }
 
+WriteOwnerLimitedRights: types.#Kind & {
+	symbol: "WriteOwnerLimitedRights"
+	schema: "active_directory"
+}
+
+WriteOwnerRaw: types.#Kind & {
+	symbol: "WriteOwnerRaw"
+	schema: "active_directory"
+}
+
+OwnsLimitedRights: types.#Kind & {
+	symbol: "OwnsLimitedRights"
+	schema: "active_directory"
+}
+
+OwnsRaw: types.#Kind & {
+	symbol: "OwnsRaw"
+	schema: "active_directory"
+}
+
 // Relationship Kinds
 RelationshipKinds: [
 	Owns,
@@ -1394,6 +1446,10 @@ RelationshipKinds: [
 	ADCSESC13,
 	SyncedToEntraUser,
 	CoerceAndRelayNTLMToSMB,
+	WriteOwnerLimitedRights,
+	WriteOwnerRaw,
+	OwnsLimitedRights,
+	OwnsRaw
 ]
 
 // ACL Relationships
@@ -1424,6 +1480,10 @@ ACLRelationships: [
 	Enroll,
 	WritePKIEnrollmentFlag,
 	WritePKINameFlag,
+	WriteOwnerLimitedRights,
+	WriteOwnerRaw,
+	OwnsLimitedRights,
+	OwnsRaw
 ]
 
 // these edges are common to inbound/outbound/pathfinding
@@ -1472,6 +1532,8 @@ SharedRelationshipKinds: [
 	ADCSESC13,
 	SyncedToEntraUser,
 	CoerceAndRelayNTLMToSMB,
+	WriteOwnerLimitedRights,
+	OwnsLimitedRights
 ]
 
 // Edges that are used during inbound traversal
