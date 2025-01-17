@@ -33,7 +33,7 @@ func (s *Translator) buildTailProjection(scope *Scope) error {
 
 	if projectionConstraint, err := s.treeTranslator.ConsumeAll(); err != nil {
 		return err
-	} else if projection, err := buildExternalProjection(scope, s.intermediates.projections.Projections); err != nil {
+	} else if projection, err := buildExternalProjection(scope, s.intermediates.projections.Items); err != nil {
 		return err
 	} else {
 		singlePartQuerySelect.Projection = projection

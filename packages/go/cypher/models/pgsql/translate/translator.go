@@ -70,8 +70,30 @@ type intermediates struct {
 	properties  map[string]pgsql.Expression
 	pattern     *Pattern
 	match       *Match
-	projections *ProjectionClause
+	projections *Projections
 	mutations   *Mutations
+}
+
+func (s *intermediates) PrepareProjections(distinct bool) {
+	s.projections = &Projections{
+		Distinct: distinct,
+	}
+}
+
+func (s *intermediates) PrepareProjection() {
+	s.projections.Items = append(s.projections.Items, &Projection{})
+}
+
+func (s *intermediates) CurrentProjection() *Projection {
+	return s.projections.Current()
+}
+
+func (s *intermediates) PrepareProperties() {
+	if s.properties != nil {
+		clear(s.properties)
+	} else {
+		s.properties = map[string]pgsql.Expression{}
+	}
 }
 
 type Translator struct {
@@ -82,7 +104,7 @@ type Translator struct {
 	translation    Result
 	state          []State
 	treeTranslator *ExpressionTreeTranslator
-	intermediates  intermediates
+	intermediates  *intermediates
 	query          *Query
 }
 
@@ -99,7 +121,10 @@ func NewTranslator(ctx context.Context, kindMapper pgsql.KindMapper, parameters 
 		ctx:            ctx,
 		kindMapper:     kindMapper,
 		treeTranslator: NewExpressionTreeTranslator(),
-		query:          &Query{},
+		intermediates:  &intermediates{},
+		query: &Query{
+			Scope: NewScope(),
+		},
 	}
 }
 
@@ -134,7 +159,6 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 
 	case *cypher.SinglePartQuery:
 		s.query.Tail = &QueryPart{
-			Scope: NewScope(),
 			Model: &pgsql.Query{
 				CommonTableExpressions: &pgsql.With{},
 			},
@@ -152,7 +176,7 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 		// cypher will store identifier constraints in the query pattern which precedes the query where clause.
 		s.intermediates.pattern = &Pattern{}
 		s.intermediates.match = &Match{
-			Scope:   s.query.Tail.Scope,
+			Scope:   s.query.Scope,
 			Pattern: s.intermediates.pattern,
 		}
 
@@ -176,16 +200,16 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 	case *cypher.Parameter:
 		var (
 			cypherIdentifier = pgsql.Identifier(typedExpression.Symbol)
-			binding, bound   = s.query.Tail.Scope.AliasedLookup(cypherIdentifier)
+			binding, bound   = s.query.Scope.AliasedLookup(cypherIdentifier)
 		)
 
 		if !bound {
-			if parameterBinding, err := s.query.Tail.Scope.DefineNew(pgsql.ParameterIdentifier); err != nil {
+			if parameterBinding, err := s.query.Scope.DefineNew(pgsql.ParameterIdentifier); err != nil {
 				s.SetError(err)
 			} else {
 				// Alias the old parameter identifier to the synthetic one
 				if cypherIdentifier != "" {
-					s.query.Tail.Scope.Alias(cypherIdentifier, parameterBinding)
+					s.query.Scope.Alias(cypherIdentifier, parameterBinding)
 				}
 
 				// Create a new container for the parameter and its value
@@ -215,7 +239,7 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 	case *cypher.Variable:
 		switch currentState := s.currentState(); currentState {
 		case StateTranslatingNestedExpression:
-			if binding, resolved := s.query.Tail.Scope.LookupString(typedExpression.Symbol); !resolved {
+			if binding, resolved := s.query.Scope.LookupString(typedExpression.Symbol); !resolved {
 				s.SetErrorf("unable to find identifier %s", typedExpression.Symbol)
 			} else {
 				s.treeTranslator.Push(binding.Identifier)
@@ -276,21 +300,21 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 
 	case *cypher.ProjectionItem:
 		s.pushState(StateTranslatingNestedExpression)
-		s.intermediates.projections.PushProjection()
+		s.intermediates.PrepareProjection()
 
 	case *cypher.PatternPredicate:
 		s.pushState(StateTranslatingPatternPredicate)
 
 		s.intermediates.pattern = &Pattern{}
 
-		if err := s.translatePatternPredicate(s.query.Tail.Scope); err != nil {
+		if err := s.translatePatternPredicate(s.query.Scope); err != nil {
 			s.SetError(err)
 		}
 
 	case *cypher.PatternPart:
 		s.pushState(StateTranslatingPatternPart)
 
-		if err := s.translatePatternPart(s.query.Tail.Scope, typedExpression); err != nil {
+		if err := s.translatePatternPart(s.query.Scope, typedExpression); err != nil {
 			s.SetError(err)
 		}
 
@@ -313,6 +337,9 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 	case *cypher.UpdatingClause:
 		s.pushState(StateTranslatingUpdateClause)
 
+	case *cypher.Properties:
+		s.intermediates.PrepareProperties()
+
 	case *cypher.RemoveItem:
 		s.pushState(StateTranslatingNestedExpression)
 
@@ -321,13 +348,6 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 
 	case *cypher.SetItem:
 		s.pushState(StateTranslatingNestedExpression)
-
-	case *cypher.Properties:
-		if s.intermediates.properties != nil {
-			clear(s.intermediates.properties)
-		} else {
-			s.intermediates.properties = map[string]pgsql.Expression{}
-		}
 
 	case *cypher.MapItem:
 		s.pushState(StateTranslatingNestedExpression)
@@ -340,12 +360,12 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 func (s *Translator) Exit(expression cypher.SyntaxNode) {
 	switch typedExpression := expression.(type) {
 	case *cypher.NodePattern:
-		if err := s.translateNodePattern(s.query.Tail.Scope, typedExpression, s.intermediates.pattern.CurrentPart()); err != nil {
+		if err := s.translateNodePattern(s.query.Scope, typedExpression, s.intermediates.pattern.CurrentPart()); err != nil {
 			s.SetError(err)
 		}
 
 	case *cypher.RelationshipPattern:
-		if err := s.translateRelationshipPattern(s.query.Tail.Scope, typedExpression, s.intermediates.pattern.CurrentPart()); err != nil {
+		if err := s.translateRelationshipPattern(s.query.Scope, typedExpression, s.intermediates.pattern.CurrentPart()); err != nil {
 			s.SetError(err)
 		}
 
@@ -363,7 +383,7 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 
 		// Retire the predicate scope frames and build the predicate
 		for range s.intermediates.pattern.CurrentPart().TraversalSteps {
-			s.query.Tail.Scope.PopFrame()
+			s.query.Scope.PopFrame()
 		}
 
 		if err := s.buildPatternPredicate(); err != nil {
@@ -380,7 +400,7 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 	case *cypher.Delete:
 		s.exitState(StateTranslatingNestedExpression)
 
-		if err := s.translateDelete(s.query.Tail.Scope, typedExpression); err != nil {
+		if err := s.translateDelete(s.query.Scope, typedExpression); err != nil {
 			s.SetError(err)
 		}
 
@@ -438,7 +458,7 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 		// Rewrite the order by constraints
 		if lookupExpression, err := s.treeTranslator.Pop(); err != nil {
 			s.SetError(err)
-		} else if err := RewriteExpressionIdentifiers(lookupExpression, s.query.Tail.Scope.CurrentFrameBinding().Identifier, s.query.Tail.Scope.Visible()); err != nil {
+		} else if err := RewriteExpressionIdentifiers(lookupExpression, s.query.Scope.CurrentFrameBinding().Identifier, s.query.Scope.Visible()); err != nil {
 			s.SetError(err)
 		} else {
 			if propertyLookup, isPropertyLookup := asPropertyLookup(lookupExpression); isPropertyLookup {
@@ -759,7 +779,7 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 	case *cypher.PartialComparison:
 		switch currentState := s.currentState(); currentState {
 		case StateTranslatingNestedExpression:
-			if err := s.treeTranslator.PopPushOperator(s.query.Tail.Scope, pgsql.Operator(typedExpression.Operator)); err != nil {
+			if err := s.treeTranslator.PopPushOperator(s.query.Scope, pgsql.Operator(typedExpression.Operator)); err != nil {
 				s.SetError(err)
 			}
 
@@ -770,7 +790,7 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 	case *cypher.PartialArithmeticExpression:
 		switch currentState := s.currentState(); currentState {
 		case StateTranslatingNestedExpression:
-			if err := s.treeTranslator.PopPushOperator(s.query.Tail.Scope, pgsql.Operator(typedExpression.Operator)); err != nil {
+			if err := s.treeTranslator.PopPushOperator(s.query.Scope, pgsql.Operator(typedExpression.Operator)); err != nil {
 				s.SetError(err)
 			}
 
@@ -782,7 +802,7 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 		switch currentState := s.currentState(); currentState {
 		case StateTranslatingNestedExpression:
 			for idx := 0; idx < typedExpression.Len()-1; idx++ {
-				if err := s.treeTranslator.PopPushOperator(s.query.Tail.Scope, pgsql.OperatorOr); err != nil {
+				if err := s.treeTranslator.PopPushOperator(s.query.Scope, pgsql.OperatorOr); err != nil {
 					s.SetError(err)
 				}
 			}
@@ -795,7 +815,7 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 		switch currentState := s.currentState(); currentState {
 		case StateTranslatingNestedExpression:
 			for idx := 0; idx < typedExpression.Len()-1; idx++ {
-				if err := s.treeTranslator.PopPushOperator(s.query.Tail.Scope, pgsql.OperatorAnd); err != nil {
+				if err := s.treeTranslator.PopPushOperator(s.query.Scope, pgsql.OperatorAnd); err != nil {
 					s.SetError(err)
 				}
 			}
@@ -807,7 +827,7 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 	case *cypher.ProjectionItem:
 		s.exitState(StateTranslatingNestedExpression)
 
-		if err := s.translateProjectionItem(s.query.Tail.Scope, typedExpression); err != nil {
+		if err := s.translateProjectionItem(s.query.Scope, typedExpression); err != nil {
 			s.SetError(err)
 		}
 
@@ -828,17 +848,17 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 
 	case *cypher.SinglePartQuery:
 		if s.intermediates.mutations.Assignments.Len() > 0 {
-			if err := s.translateUpdates(s.query.Tail.Scope); err != nil {
+			if err := s.translateUpdates(s.query.Scope); err != nil {
 				s.SetError(err)
 			}
 
-			if err := s.buildUpdates(s.query.Tail.Scope); err != nil {
+			if err := s.buildUpdates(s.query.Scope); err != nil {
 				s.SetError(err)
 			}
 		}
 
 		if s.intermediates.mutations.Deletions.Len() > 0 {
-			if err := s.buildDeletions(s.query.Tail.Scope); err != nil {
+			if err := s.buildDeletions(s.query.Scope); err != nil {
 				s.SetError(err)
 			}
 		}
@@ -852,7 +872,7 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 					Projection: []pgsql.SelectItem{literalReturn},
 				}
 			}
-		} else if err := s.buildTailProjection(s.query.Tail.Scope); err != nil {
+		} else if err := s.buildTailProjection(s.query.Scope); err != nil {
 			s.SetError(err)
 		}
 

@@ -39,10 +39,10 @@ func (s *Translator) translateRemoveItem(removeItem *cypher.RemoveItem) error {
 	if removeItem.KindMatcher != nil {
 		if variable, isVariable := removeItem.KindMatcher.Reference.(*cypher.Variable); !isVariable {
 			return fmt.Errorf("expected variable for kind matcher reference but found type: %T", removeItem.KindMatcher.Reference)
-		} else if binding, resolved := s.query.Tail.Scope.LookupString(variable.Symbol); !resolved {
+		} else if binding, resolved := s.query.Scope.LookupString(variable.Symbol); !resolved {
 			return fmt.Errorf("unable to find identifier %s", variable.Symbol)
 		} else {
-			return s.intermediates.mutations.AddKindRemoval(s.query.Tail.Scope, binding.Identifier, removeItem.KindMatcher.Kinds)
+			return s.intermediates.mutations.AddKindRemoval(s.query.Scope, binding.Identifier, removeItem.KindMatcher.Kinds)
 		}
 	}
 
@@ -52,7 +52,7 @@ func (s *Translator) translateRemoveItem(removeItem *cypher.RemoveItem) error {
 		} else if propertyLookup, err := decomposePropertyLookup(propertyLookupExpression); err != nil {
 			return err
 		} else {
-			return s.intermediates.mutations.AddPropertyRemoval(s.query.Tail.Scope, propertyLookup)
+			return s.intermediates.mutations.AddPropertyRemoval(s.query.Scope, propertyLookup)
 		}
 	}
 
@@ -71,7 +71,7 @@ func (s *Translator) translatePropertyLookup(lookup *cypher.PropertyLookup) {
 				s.treeTranslator.Push(pgsql.CompoundIdentifier{typedTranslatedAtom, pgsql.ColumnProperties})
 				s.treeTranslator.Push(fieldIdentifierLiteral)
 
-				if err := s.treeTranslator.PopPushOperator(s.query.Tail.Scope, pgsql.OperatorPropertyLookup); err != nil {
+				if err := s.treeTranslator.PopPushOperator(s.query.Scope, pgsql.OperatorPropertyLookup); err != nil {
 					s.SetError(err)
 				}
 			}
@@ -142,7 +142,7 @@ func (s *Translator) translateSetItem(setItem *cypher.SetItem) error {
 			} else if leftPropertyLookup, err := decomposePropertyLookup(leftOperand); err != nil {
 				return err
 			} else {
-				return s.intermediates.mutations.AddPropertyAssignment(s.query.Tail.Scope, leftPropertyLookup, operator, rightOperand)
+				return s.intermediates.mutations.AddPropertyAssignment(s.query.Scope, leftPropertyLookup, operator, rightOperand)
 			}
 
 		case pgsql.OperatorKindAssignment:
@@ -155,7 +155,7 @@ func (s *Translator) translateSetItem(setItem *cypher.SetItem) error {
 			} else if kindList, isKindListLiteral := rightOperand.(pgsql.KindListLiteral); !isKindListLiteral {
 				return fmt.Errorf("expected an identifier for kind list right operand but got: %T", rightOperand)
 			} else {
-				return s.intermediates.mutations.AddKindAssignment(s.query.Tail.Scope, targetIdentifier, kindList.Values)
+				return s.intermediates.mutations.AddKindAssignment(s.query.Scope, targetIdentifier, kindList.Values)
 			}
 
 		default:
@@ -289,7 +289,7 @@ func (s *Translator) translateCoalesceFunction(functionInvocation *cypher.Functi
 func (s *Translator) translateKindMatcher(kindMatcher *cypher.KindMatcher) error {
 	if variable, isVariable := kindMatcher.Reference.(*cypher.Variable); !isVariable {
 		return fmt.Errorf("expected variable for kind matcher reference but found type: %T", kindMatcher.Reference)
-	} else if binding, resolved := s.query.Tail.Scope.LookupString(variable.Symbol); !resolved {
+	} else if binding, resolved := s.query.Scope.LookupString(variable.Symbol); !resolved {
 		return fmt.Errorf("unable to find identifier %s", variable.Symbol)
 	} else if kindIDs, err := s.kindMapper.MapKinds(s.ctx, kindMatcher.Kinds); err != nil {
 		s.SetError(fmt.Errorf("failed to translate kinds: %w", err))
@@ -301,7 +301,7 @@ func (s *Translator) translateKindMatcher(kindMatcher *cypher.KindMatcher) error
 			s.treeTranslator.Push(pgsql.CompoundIdentifier{binding.Identifier, pgsql.ColumnKindIDs})
 			s.treeTranslator.Push(kindIDsLiteral)
 
-			if err := s.treeTranslator.PopPushOperator(s.query.Tail.Scope, pgsql.OperatorPGArrayOverlap); err != nil {
+			if err := s.treeTranslator.PopPushOperator(s.query.Scope, pgsql.OperatorPGArrayOverlap); err != nil {
 				s.SetError(err)
 			}
 
@@ -309,7 +309,7 @@ func (s *Translator) translateKindMatcher(kindMatcher *cypher.KindMatcher) error
 			s.treeTranslator.Push(pgsql.CompoundIdentifier{binding.Identifier, pgsql.ColumnKindID})
 			s.treeTranslator.Push(pgsql.NewAnyExpression(kindIDsLiteral))
 
-			if err := s.treeTranslator.PopPushOperator(s.query.Tail.Scope, pgsql.OperatorEquals); err != nil {
+			if err := s.treeTranslator.PopPushOperator(s.query.Scope, pgsql.OperatorEquals); err != nil {
 				s.SetError(err)
 			}
 
@@ -330,7 +330,7 @@ func (s *Translator) translateProjectionItem(scope *Scope, projectionItem *cyphe
 		s.SetErrorf("invalid type for select item: %T", nextExpression)
 	} else {
 		if hasAlias {
-			s.intermediates.projections.CurrentProjection().SetAlias(alias)
+			s.intermediates.CurrentProjection().SetAlias(alias)
 		}
 
 		switch typedSelectItem := selectItem.(type) {
@@ -341,7 +341,7 @@ func (s *Translator) translateProjectionItem(scope *Scope, projectionItem *cyphe
 				if boundSelectItem, bound := scope.Lookup(typedSelectItem); !bound {
 					return fmt.Errorf("invalid identifier: %s", typedSelectItem)
 				} else {
-					s.intermediates.projections.CurrentProjection().SetAlias(boundSelectItem.Aliased())
+					s.intermediates.CurrentProjection().SetAlias(boundSelectItem.Aliased())
 				}
 			}
 
@@ -352,14 +352,14 @@ func (s *Translator) translateProjectionItem(scope *Scope, projectionItem *cyphe
 			}
 		}
 
-		s.intermediates.projections.CurrentProjection().SelectItem = selectItem
+		s.intermediates.CurrentProjection().SelectItem = selectItem
 	}
 
 	return nil
 }
 
 func (s *Translator) translateProjection(projection *cypher.Projection) error {
-	s.intermediates.projections = NewProjectionClause()
+	s.intermediates.PrepareProjections(projection.Distinct)
 	s.intermediates.projections.Distinct = projection.Distinct
 
 	if projection.Skip != nil {

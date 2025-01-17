@@ -153,11 +153,11 @@ func (s *Pattern) CurrentPart() *PatternPart {
 type Query struct {
 	Parts []*QueryPart
 	Tail  *QueryPart
+	Scope *Scope
 }
 
 type QueryPart struct {
 	Model   *pgsql.Query
-	Scope   *Scope
 	Updates []*Mutations
 	OrderBy []pgsql.OrderBy
 	Skip    models.Optional[pgsql.Expression]
@@ -317,21 +317,13 @@ func (s *Mutations) AddKindRemoval(scope *Scope, targetIdentifier pgsql.Identifi
 	return nil
 }
 
-type ProjectionClause struct {
-	Distinct    bool
-	Projections []*Projection
+type Projections struct {
+	Distinct bool
+	Items    []*Projection
 }
 
-func NewProjectionClause() *ProjectionClause {
-	return &ProjectionClause{}
-}
-
-func (s *ProjectionClause) PushProjection() {
-	s.Projections = append(s.Projections, &Projection{})
-}
-
-func (s *ProjectionClause) CurrentProjection() *Projection {
-	return s.Projections[len(s.Projections)-1]
+func (s *Projections) Current() *Projection {
+	return s.Items[len(s.Items)-1]
 }
 
 func extractIdentifierFromCypherExpression(expression cypher.Expression) (pgsql.Identifier, bool, error) {

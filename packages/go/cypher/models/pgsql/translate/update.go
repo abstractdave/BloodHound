@@ -25,7 +25,7 @@ import (
 
 func (s *Translator) translateUpdates(scope *Scope) error {
 	for _, identifierMutation := range s.intermediates.mutations.Assignments.Values() {
-		if stepFrame, err := s.query.Tail.Scope.PushFrame(); err != nil {
+		if stepFrame, err := s.query.Scope.PushFrame(); err != nil {
 			return err
 		} else {
 			identifierMutation.Frame = stepFrame

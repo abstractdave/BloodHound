@@ -14,5 +14,5 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
--- case: with 1 as target match (n:NodeKind1) where n.value = target return n
+-- todo: with 1 as target match (n:NodeKind1) where n.value = target return n
 ;
