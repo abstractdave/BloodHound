@@ -156,6 +156,14 @@ type Query struct {
 	Scope *Scope
 }
 
+func (s *Query) PrepareTail() {
+	s.Tail = &QueryPart{
+		Model: &pgsql.Query{
+			CommonTableExpressions: &pgsql.With{},
+		},
+	}
+}
+
 type QueryPart struct {
 	Model   *pgsql.Query
 	Updates []*Mutations

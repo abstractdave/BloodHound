@@ -80,6 +80,20 @@ func (s *intermediates) PrepareProjections(distinct bool) {
 	}
 }
 
+func (s *intermediates) PrepareMutations() {
+	if s.mutations == nil {
+		s.mutations = NewMutations()
+	}
+}
+
+func (s *intermediates) HasMutations() bool {
+	return s.mutations != nil && s.mutations.Assignments.Len() > 0
+}
+
+func (s *intermediates) HasDeletions() bool {
+	return s.mutations != nil && s.mutations.Deletions.Len() > 0
+}
+
 func (s *intermediates) PrepareProjection() {
 	s.projections.Items = append(s.projections.Items, &Projection{})
 }
@@ -158,13 +172,7 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 		s.pushState(StateTranslatingNestedExpression)
 
 	case *cypher.SinglePartQuery:
-		s.query.Tail = &QueryPart{
-			Model: &pgsql.Query{
-				CommonTableExpressions: &pgsql.With{},
-			},
-		}
-
-		s.intermediates.mutations = NewMutations()
+		s.query.PrepareTail()
 
 	case *cypher.Create:
 		s.pushState(StateTranslatingCreate)
@@ -336,6 +344,7 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 
 	case *cypher.UpdatingClause:
 		s.pushState(StateTranslatingUpdateClause)
+		s.intermediates.PrepareMutations()
 
 	case *cypher.Properties:
 		s.intermediates.PrepareProperties()
@@ -345,6 +354,7 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 
 	case *cypher.Delete:
 		s.pushState(StateTranslatingNestedExpression)
+		s.intermediates.PrepareMutations()
 
 	case *cypher.SetItem:
 		s.pushState(StateTranslatingNestedExpression)
@@ -847,7 +857,7 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 		}
 
 	case *cypher.SinglePartQuery:
-		if s.intermediates.mutations.Assignments.Len() > 0 {
+		if s.intermediates.HasMutations() {
 			if err := s.translateUpdates(s.query.Scope); err != nil {
 				s.SetError(err)
 			}
@@ -857,7 +867,7 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 			}
 		}
 
-		if s.intermediates.mutations.Deletions.Len() > 0 {
+		if s.intermediates.HasDeletions() {
 			if err := s.buildDeletions(s.query.Scope); err != nil {
 				s.SetError(err)
 			}
