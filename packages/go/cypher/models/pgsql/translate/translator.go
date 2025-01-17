@@ -102,8 +102,6 @@ func NewTranslator(ctx context.Context, kindMapper pgsql.KindMapper, parameters 
 
 func (s *Translator) Enter(expression cypher.SyntaxNode) {
 	switch typedExpression := expression.(type) {
-	case *cypher.MultiPartQuery:
-
 	case *cypher.RegularQuery, *cypher.SingleQuery, *cypher.PatternElement, *cypher.Return,
 		*cypher.Comparison, *cypher.Skip, *cypher.Limit, cypher.Operator, *cypher.ArithmeticExpression,
 		*cypher.NodePattern, *cypher.RelationshipPattern, *cypher.Remove, *cypher.Set,
@@ -112,6 +110,10 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 		*cypher.FunctionInvocation, *cypher.Order, *cypher.RemoveItem, *cypher.SetItem,
 		*cypher.MapItem:
 	// No operation for these syntax nodes
+
+	case *cypher.MultiPartQuery:
+	case *cypher.MultiPartQueryPart:
+	case *cypher.With:
 
 	case *cypher.SinglePartQuery:
 		s.query.PrepareTail()
@@ -436,7 +438,6 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 			s.SetError(err)
 		}
 
-
 	case *cypher.PartialArithmeticExpression:
 		if err := s.treeTranslator.PopPushOperator(s.query.Scope, pgsql.Operator(typedExpression.Operator)); err != nil {
 			s.SetError(err)
@@ -456,11 +457,14 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 			}
 		}
 
+	case *cypher.With:
+		a := 0
+		a += 1
+
 	case *cypher.ProjectionItem:
 		if err := s.translateProjectionItem(s.query.Scope, typedExpression); err != nil {
 			s.SetError(err)
 		}
-
 
 	case *cypher.Match:
 		if err := s.buildMatch(s.intermediates.match.Scope); err != nil {

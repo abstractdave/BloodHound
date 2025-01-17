@@ -1022,7 +1022,6 @@ func (s Select) NodeType() string {
 // select 1
 // union
 // select 2;
-
 type SetOperation struct {
 	Operator Operator
 	LOperand SetExpression
@@ -1130,18 +1129,6 @@ func (s Query) AsStatement() Statement {
 
 func (s Query) NodeType() string {
 	return "query"
-}
-
-func BinaryExpressionJoinTyped(optional Expression, operator Operator, conjoined *BinaryExpression) *BinaryExpression {
-	if optional == nil {
-		return conjoined
-	}
-
-	return NewBinaryExpression(
-		conjoined,
-		operator,
-		optional,
-	)
 }
 
 func BinaryExpressionJoin(optional Expression, operator Operator, conjoined Expression) Expression {
