@@ -151,6 +151,11 @@ func (s *Pattern) CurrentPart() *PatternPart {
 }
 
 type Query struct {
+	Parts []*QueryPart
+	Tail  *QueryPart
+}
+
+type QueryPart struct {
 	Model   *pgsql.Query
 	Scope   *Scope
 	Updates []*Mutations
@@ -159,7 +164,7 @@ type Query struct {
 	Limit   models.Optional[pgsql.Expression]
 }
 
-func (s *Query) CurrentOrderBy() *pgsql.OrderBy {
+func (s *QueryPart) CurrentOrderBy() *pgsql.OrderBy {
 	return &s.OrderBy[len(s.OrderBy)-1]
 }
 

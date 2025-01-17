@@ -34,7 +34,7 @@ func (s *Translator) translateDelete(scope *Scope, cypherDelete *cypher.Delete) 
 				if deleteFrame, err := scope.PushFrame(); err != nil {
 					return err
 				} else {
-					if identifierDeletion, err := s.mutations.AddDeletion(scope, typedExpression, deleteFrame); err != nil {
+					if identifierDeletion, err := s.intermediates.mutations.AddDeletion(scope, typedExpression, deleteFrame); err != nil {
 						return err
 					} else if boundProjections, err := buildVisibleScopeProjections(scope, nil); err != nil {
 						return err
@@ -73,7 +73,7 @@ func (s *Translator) translateDelete(scope *Scope, cypherDelete *cypher.Delete) 
 }
 
 func (s *Translator) buildDeletions(scope *Scope) error {
-	for _, identifierDeletion := range s.mutations.Deletions.Values() {
+	for _, identifierDeletion := range s.intermediates.mutations.Deletions.Values() {
 		var (
 			sqlDelete = pgsql.Delete{
 				Using: []pgsql.FromClause{{
@@ -117,7 +117,7 @@ func (s *Translator) buildDeletions(scope *Scope) error {
 		sqlDelete.Returning = identifierDeletion.Projection
 		sqlDelete.Where = models.ValueOptional(joinConstraint.Expression)
 
-		s.query.Model.AddCTE(pgsql.CommonTableExpression{
+		s.query.Tail.Model.AddCTE(pgsql.CommonTableExpression{
 			Alias: pgsql.TableAlias{
 				Name: scope.CurrentFrameBinding().Identifier,
 			},

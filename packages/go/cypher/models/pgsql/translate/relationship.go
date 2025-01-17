@@ -32,10 +32,10 @@ func (s *Translator) translateRelationshipPattern(scope *Scope, relationshipPatt
 			return err
 		}
 
-		if len(s.properties) > 0 {
+		if len(s.intermediates.properties) > 0 {
 			var propertyConstraints pgsql.Expression
 
-			for key, value := range s.properties {
+			for key, value := range s.intermediates.properties {
 				propertyConstraints = pgsql.OptionalAnd(propertyConstraints, pgsql.NewBinaryExpression(
 					pgsql.NewPropertyLookup(pgsql.CompoundIdentifier{bindingResult.Binding.Identifier, pgsql.ColumnProperties}, pgsql.NewLiteral(key, pgsql.Text)),
 					pgsql.OperatorEquals,

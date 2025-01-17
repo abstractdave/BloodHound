@@ -26,10 +26,10 @@ import (
 
 func (s *Translator) translatePatternPredicate(scope *Scope) error {
 	// Set the pattern frame
-	s.pattern.Frame = scope.CurrentFrame()
+	s.intermediates.pattern.Frame = scope.CurrentFrame()
 
 	// All pattern predicates must be relationship patterns
-	newPatternPart := s.pattern.NewPart()
+	newPatternPart := s.intermediates.pattern.NewPart()
 	newPatternPart.IsTraversal = true
 
 	return nil
@@ -74,14 +74,14 @@ func (s *Translator) buildOptimizedRelationshipExistPredicate(part *PatternPart,
 }
 
 func (s *Translator) buildPatternPredicate() error {
-	if numPatternParts := len(s.pattern.Parts); numPatternParts < 1 || numPatternParts > 1 {
+	if numPatternParts := len(s.intermediates.pattern.Parts); numPatternParts < 1 || numPatternParts > 1 {
 		return fmt.Errorf("expected exactly one pattern part for pattern predicate but found: %d", numPatternParts)
 	}
 
 	var (
 		lastFrame *Frame
 
-		patternPart = s.pattern.Parts[0]
+		patternPart = s.intermediates.pattern.Parts[0]
 		subQuery    = pgsql.Query{
 			CommonTableExpressions: &pgsql.With{},
 		}

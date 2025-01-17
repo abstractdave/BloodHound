@@ -20,7 +20,7 @@ import (
 	"github.com/specterops/bloodhound/cypher/models/pgsql"
 )
 
-func (s *Translator) buildProjection(scope *Scope) error {
+func (s *Translator) buildTailProjection(scope *Scope) error {
 	var (
 		singlePartQuerySelect = pgsql.Select{}
 	)
@@ -33,32 +33,32 @@ func (s *Translator) buildProjection(scope *Scope) error {
 
 	if projectionConstraint, err := s.treeTranslator.ConsumeAll(); err != nil {
 		return err
-	} else if projection, err := buildExternalProjection(scope, s.projections.Projections); err != nil {
+	} else if projection, err := buildExternalProjection(scope, s.intermediates.projections.Projections); err != nil {
 		return err
 	} else {
 		singlePartQuerySelect.Projection = projection
 		singlePartQuerySelect.Where = projectionConstraint.Expression
 	}
 
-	s.query.Model.Body = singlePartQuerySelect
+	s.query.Tail.Model.Body = singlePartQuerySelect
 
-	if s.query.Skip.Set {
-		s.query.Model.Offset = s.query.Skip
+	if s.query.Tail.Skip.Set {
+		s.query.Tail.Model.Offset = s.query.Tail.Skip
 	}
 
-	if s.query.Limit.Set {
-		s.query.Model.Limit = s.query.Limit
+	if s.query.Tail.Limit.Set {
+		s.query.Tail.Model.Limit = s.query.Tail.Limit
 	}
 
-	if len(s.query.OrderBy) > 0 {
-		s.query.Model.OrderBy = s.query.OrderBy
+	if len(s.query.Tail.OrderBy) > 0 {
+		s.query.Tail.Model.OrderBy = s.query.Tail.OrderBy
 	}
 
 	return nil
 }
 
 func (s *Translator) buildMatch(scope *Scope) error {
-	for _, part := range s.match.Pattern.Parts {
+	for _, part := range s.intermediates.match.Pattern.Parts {
 		// Pattern can't be in scope at time of select as the pattern's scope directly depends on the
 		// pattern parts
 		if err := s.buildPatternPart(scope, part); err != nil {
