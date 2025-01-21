@@ -892,14 +892,12 @@ Properties: [
 	LockoutDuration,
 	LockoutObservationWindow,
 	OwnerSid,
-	LockoutObservationWindow,
 	SMBSigning,
 	RestrictOutboundNTLM,
 	GMSA,
 	MSA,
 	DoesAnyAceGrantOwnerRights,
-	DoesAnyInheritedAceGrantOwnerRights,
-	OwnerSid
+	DoesAnyInheritedAceGrantOwnerRights
 ]
 
 // Kinds
