@@ -33,32 +33,32 @@ func (s *Translator) buildTailProjection(scope *Scope) error {
 
 	if projectionConstraint, err := s.treeTranslator.ConsumeAll(); err != nil {
 		return err
-	} else if projection, err := buildExternalProjection(scope, s.intermediates.projections.Items); err != nil {
+	} else if projection, err := buildExternalProjection(scope, s.query.CurrentPart().projections.Items); err != nil {
 		return err
 	} else {
 		singlePartQuerySelect.Projection = projection
 		singlePartQuerySelect.Where = projectionConstraint.Expression
 	}
 
-	s.query.Tail.Model.Body = singlePartQuerySelect
+	s.query.CurrentPart().Model.Body = singlePartQuerySelect
 
-	if s.query.Tail.Skip.Set {
-		s.query.Tail.Model.Offset = s.query.Tail.Skip
+	if s.query.CurrentPart().Skip.Set {
+		s.query.CurrentPart().Model.Offset = s.query.CurrentPart().Skip
 	}
 
-	if s.query.Tail.Limit.Set {
-		s.query.Tail.Model.Limit = s.query.Tail.Limit
+	if s.query.CurrentPart().Limit.Set {
+		s.query.CurrentPart().Model.Limit = s.query.CurrentPart().Limit
 	}
 
-	if len(s.query.Tail.OrderBy) > 0 {
-		s.query.Tail.Model.OrderBy = s.query.Tail.OrderBy
+	if len(s.query.CurrentPart().OrderBy) > 0 {
+		s.query.CurrentPart().Model.OrderBy = s.query.CurrentPart().OrderBy
 	}
 
 	return nil
 }
 
 func (s *Translator) buildMatch(scope *Scope) error {
-	for _, part := range s.intermediates.match.Pattern.Parts {
+	for _, part := range s.query.CurrentPart().match.Pattern.Parts {
 		// Pattern can't be in scope at time of select as the pattern's scope directly depends on the
 		// pattern parts
 		if err := s.buildPatternPart(scope, part); err != nil {

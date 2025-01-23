@@ -152,15 +152,25 @@ func (s *Pattern) CurrentPart() *PatternPart {
 
 type Query struct {
 	Parts []*QueryPart
-	Tail  *QueryPart
 	Scope *Scope
 }
 
-func (s *Query) PrepareTail() {
-	s.Tail = &QueryPart{
-		Model: &pgsql.Query{
-			CommonTableExpressions: &pgsql.With{},
-		},
+func (s *Query) CurrentPart() *QueryPart {
+	return s.Parts[len(s.Parts)-1]
+}
+
+func (s *Query) PreparePart() error {
+	if frame, err := s.Scope.PushFrame(); err != nil {
+		return err
+	} else {
+		s.Parts = append(s.Parts, &QueryPart{
+			frame: frame,
+			Model: &pgsql.Query{
+				CommonTableExpressions: &pgsql.With{},
+			},
+		})
+
+		return nil
 	}
 }
 
@@ -170,6 +180,49 @@ type QueryPart struct {
 	OrderBy []pgsql.OrderBy
 	Skip    models.Optional[pgsql.Expression]
 	Limit   models.Optional[pgsql.Expression]
+
+	frame       *Frame
+	properties  map[string]pgsql.Expression
+	pattern     *Pattern
+	match       *Match
+	projections *Projections
+	mutations   *Mutations
+}
+
+func (s *QueryPart) PrepareProjections(distinct bool) {
+	s.projections = &Projections{
+		Distinct: distinct,
+	}
+}
+
+func (s *QueryPart) PrepareMutations() {
+	if s.mutations == nil {
+		s.mutations = NewMutations()
+	}
+}
+
+func (s *QueryPart) HasMutations() bool {
+	return s.mutations != nil && s.mutations.Assignments.Len() > 0
+}
+
+func (s *QueryPart) HasDeletions() bool {
+	return s.mutations != nil && s.mutations.Deletions.Len() > 0
+}
+
+func (s *QueryPart) PrepareProjection() {
+	s.projections.Items = append(s.projections.Items, &Projection{})
+}
+
+func (s *QueryPart) CurrentProjection() *Projection {
+	return s.projections.Current()
+}
+
+func (s *QueryPart) PrepareProperties() {
+	if s.properties != nil {
+		clear(s.properties)
+	} else {
+		s.properties = map[string]pgsql.Expression{}
+	}
 }
 
 func (s *QueryPart) CurrentOrderBy() *pgsql.OrderBy {
@@ -328,6 +381,10 @@ func (s *Mutations) AddKindRemoval(scope *Scope, targetIdentifier pgsql.Identifi
 type Projections struct {
 	Distinct bool
 	Items    []*Projection
+}
+
+func (s *Projections) Add(projection *Projection) {
+	s.Items = append(s.Items, projection)
 }
 
 func (s *Projections) Current() *Projection {

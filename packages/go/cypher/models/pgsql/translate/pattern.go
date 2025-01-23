@@ -51,7 +51,7 @@ func (s *Translator) bindPatternExpression(scope *Scope, cypherExpression cypher
 
 func (s *Translator) translatePatternPart(scope *Scope, patternPart *cypher.PatternPart) error {
 	// We expect this to be a node select if there aren't enough pattern elements for a traversal
-	newPatternPart := s.intermediates.pattern.NewPart()
+	newPatternPart := s.query.CurrentPart().pattern.NewPart()
 	newPatternPart.IsTraversal = len(patternPart.PatternElements) > 1
 	newPatternPart.ShortestPath = patternPart.ShortestPathPattern
 	newPatternPart.AllShortestPaths = patternPart.AllShortestPathsPattern
@@ -88,7 +88,7 @@ func (s *Translator) buildPattern(scope *Scope, part *PatternPart) error {
 				if traversalStepQuery, err := s.buildExpansionPatternStep(part, traversalStep); err != nil {
 					return err
 				} else {
-					s.query.Tail.Model.AddCTE(pgsql.CommonTableExpression{
+					s.query.CurrentPart().Model.AddCTE(pgsql.CommonTableExpression{
 						Alias: pgsql.TableAlias{
 							Name: traversalStep.Expansion.Value.Frame.Binding.Identifier,
 						},
@@ -99,7 +99,7 @@ func (s *Translator) buildPattern(scope *Scope, part *PatternPart) error {
 				if traversalStepQuery, err := s.buildExpansionPatternRoot(part, traversalStep); err != nil {
 					return err
 				} else {
-					s.query.Tail.Model.AddCTE(pgsql.CommonTableExpression{
+					s.query.CurrentPart().Model.AddCTE(pgsql.CommonTableExpression{
 						Alias: pgsql.TableAlias{
 							Name: traversalStep.Expansion.Value.Frame.Binding.Identifier,
 						},
@@ -111,7 +111,7 @@ func (s *Translator) buildPattern(scope *Scope, part *PatternPart) error {
 			if traversalStepQuery, err := s.buildTraversalPatternStep(part, traversalStep); err != nil {
 				return err
 			} else {
-				s.query.Tail.Model.AddCTE(pgsql.CommonTableExpression{
+				s.query.CurrentPart().Model.AddCTE(pgsql.CommonTableExpression{
 					Alias: pgsql.TableAlias{
 						Name: traversalStep.Frame.Binding.Identifier,
 					},
@@ -122,7 +122,7 @@ func (s *Translator) buildPattern(scope *Scope, part *PatternPart) error {
 			if traversalStepQuery, err := s.buildTraversalPatternRoot(part, traversalStep); err != nil {
 				return err
 			} else {
-				s.query.Tail.Model.AddCTE(pgsql.CommonTableExpression{
+				s.query.CurrentPart().Model.AddCTE(pgsql.CommonTableExpression{
 					Alias: pgsql.TableAlias{
 						Name: traversalStep.Frame.Binding.Identifier,
 					},

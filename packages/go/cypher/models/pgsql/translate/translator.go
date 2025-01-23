@@ -25,50 +25,6 @@ import (
 	"github.com/specterops/bloodhound/dawgs/graph"
 )
 
-type intermediates struct {
-	properties  map[string]pgsql.Expression
-	pattern     *Pattern
-	match       *Match
-	projections *Projections
-	mutations   *Mutations
-}
-
-func (s *intermediates) PrepareProjections(distinct bool) {
-	s.projections = &Projections{
-		Distinct: distinct,
-	}
-}
-
-func (s *intermediates) PrepareMutations() {
-	if s.mutations == nil {
-		s.mutations = NewMutations()
-	}
-}
-
-func (s *intermediates) HasMutations() bool {
-	return s.mutations != nil && s.mutations.Assignments.Len() > 0
-}
-
-func (s *intermediates) HasDeletions() bool {
-	return s.mutations != nil && s.mutations.Deletions.Len() > 0
-}
-
-func (s *intermediates) PrepareProjection() {
-	s.projections.Items = append(s.projections.Items, &Projection{})
-}
-
-func (s *intermediates) CurrentProjection() *Projection {
-	return s.projections.Current()
-}
-
-func (s *intermediates) PrepareProperties() {
-	if s.properties != nil {
-		clear(s.properties)
-	} else {
-		s.properties = map[string]pgsql.Expression{}
-	}
-}
-
 type Translator struct {
 	walk.HierarchicalVisitor[cypher.SyntaxNode]
 
@@ -76,7 +32,6 @@ type Translator struct {
 	kindMapper     pgsql.KindMapper
 	translation    Result
 	treeTranslator *ExpressionTreeTranslator
-	intermediates  *intermediates
 	query          *Query
 }
 
@@ -93,7 +48,6 @@ func NewTranslator(ctx context.Context, kindMapper pgsql.KindMapper, parameters 
 		ctx:            ctx,
 		kindMapper:     kindMapper,
 		treeTranslator: NewExpressionTreeTranslator(),
-		intermediates:  &intermediates{},
 		query: &Query{
 			Scope: NewScope(),
 		},
@@ -113,18 +67,20 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 
 	case *cypher.MultiPartQuery:
 	case *cypher.MultiPartQueryPart:
+		s.query.PreparePart()
+
 	case *cypher.With:
 
 	case *cypher.SinglePartQuery:
-		s.query.PrepareTail()
+		s.query.PreparePart()
 
 	case *cypher.Match:
 		// Start with a fresh match and where clause. Instantiation of the where clause here is necessary since
 		// cypher will store identifier constraints in the query pattern which precedes the query where clause.
-		s.intermediates.pattern = &Pattern{}
-		s.intermediates.match = &Match{
+		s.query.CurrentPart().pattern = &Pattern{}
+		s.query.CurrentPart().match = &Match{
 			Scope:   s.query.Scope,
-			Pattern: s.intermediates.pattern,
+			Pattern: s.query.CurrentPart().pattern,
 		}
 
 	case graph.Kinds:
@@ -196,7 +152,7 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 		s.treeTranslator.PushParenthetical()
 
 	case *cypher.SortItem:
-		s.query.Tail.OrderBy = append(s.query.Tail.OrderBy, pgsql.OrderBy{
+		s.query.CurrentPart().OrderBy = append(s.query.CurrentPart().OrderBy, pgsql.OrderBy{
 			Ascending: typedExpression.Ascending,
 		})
 
@@ -206,10 +162,10 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 		}
 
 	case *cypher.ProjectionItem:
-		s.intermediates.PrepareProjection()
+		s.query.CurrentPart().PrepareProjection()
 
 	case *cypher.PatternPredicate:
-		s.intermediates.pattern = &Pattern{}
+		s.query.CurrentPart().pattern = &Pattern{}
 
 		if err := s.translatePatternPredicate(s.query.Scope); err != nil {
 			s.SetError(err)
@@ -237,13 +193,13 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 		}
 
 	case *cypher.UpdatingClause:
-		s.intermediates.PrepareMutations()
+		s.query.CurrentPart().PrepareMutations()
 
 	case *cypher.Properties:
-		s.intermediates.PrepareProperties()
+		s.query.CurrentPart().PrepareProperties()
 
 	case *cypher.Delete:
-		s.intermediates.PrepareMutations()
+		s.query.CurrentPart().PrepareMutations()
 
 	default:
 		s.SetErrorf("unable to translate cypher type: %T", expression)
@@ -253,12 +209,12 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 func (s *Translator) Exit(expression cypher.SyntaxNode) {
 	switch typedExpression := expression.(type) {
 	case *cypher.NodePattern:
-		if err := s.translateNodePattern(s.query.Scope, typedExpression, s.intermediates.pattern.CurrentPart()); err != nil {
+		if err := s.translateNodePattern(s.query.Scope, typedExpression, s.query.CurrentPart().pattern.CurrentPart()); err != nil {
 			s.SetError(err)
 		}
 
 	case *cypher.RelationshipPattern:
-		if err := s.translateRelationshipPattern(s.query.Scope, typedExpression, s.intermediates.pattern.CurrentPart()); err != nil {
+		if err := s.translateRelationshipPattern(s.query.Scope, typedExpression, s.query.CurrentPart().pattern.CurrentPart()); err != nil {
 			s.SetError(err)
 		}
 
@@ -266,12 +222,12 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 		if value, err := s.treeTranslator.Pop(); err != nil {
 			s.SetError(err)
 		} else {
-			s.intermediates.properties[typedExpression.Key] = value
+			s.query.CurrentPart().properties[typedExpression.Key] = value
 		}
 
 	case *cypher.PatternPredicate:
 		// Retire the predicate scope frames and build the predicate
-		for range s.intermediates.pattern.CurrentPart().TraversalSteps {
+		for range s.query.CurrentPart().pattern.CurrentPart().TraversalSteps {
 			s.query.Scope.PopFrame()
 		}
 
@@ -339,7 +295,7 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 				propertyLookup.Operator = pgsql.OperatorJSONField
 			}
 
-			s.query.Tail.CurrentOrderBy().Expression = lookupExpression
+			s.query.CurrentPart().CurrentOrderBy().Expression = lookupExpression
 		}
 
 	case *cypher.KindMatcher:
@@ -457,51 +413,28 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 			}
 		}
 
-	case *cypher.With:
-		a := 0
-		a += 1
-
 	case *cypher.ProjectionItem:
 		if err := s.translateProjectionItem(s.query.Scope, typedExpression); err != nil {
 			s.SetError(err)
 		}
 
 	case *cypher.Match:
-		if err := s.buildMatch(s.intermediates.match.Scope); err != nil {
+		if err := s.buildMatch(s.query.CurrentPart().match.Scope); err != nil {
 			s.SetError(err)
 		}
 
-	case *cypher.SinglePartQuery:
-		if s.intermediates.HasMutations() {
-			if err := s.translateUpdates(s.query.Scope); err != nil {
-				s.SetError(err)
-			}
+	case *cypher.MultiPartQueryPart:
 
-			if err := s.buildUpdates(s.query.Scope); err != nil {
-				s.SetError(err)
-			}
-		}
+	case *cypher.MultiPartQuery:
 
-		if s.intermediates.HasDeletions() {
-			if err := s.buildDeletions(s.query.Scope); err != nil {
+	case *cypher.SingleQuery:
+		if typedExpression.SinglePartQuery != nil {
+			if err := s.buildSinglePartQuery(typedExpression.SinglePartQuery); err != nil {
 				s.SetError(err)
 			}
-		}
-
-		// If there was no return specified end the CTE chain with a bare select
-		if typedExpression.Return == nil {
-			if literalReturn, err := pgsql.AsLiteral(1); err != nil {
-				s.SetError(err)
-			} else {
-				s.query.Tail.Model.Body = pgsql.Select{
-					Projection: []pgsql.SelectItem{literalReturn},
-				}
-			}
-		} else if err := s.buildTailProjection(s.query.Scope); err != nil {
+		} else if err := s.buildMultiPartQuery(); err != nil {
 			s.SetError(err)
 		}
-
-		s.translation.Statement = *s.query.Tail.Model
 	}
 }
 

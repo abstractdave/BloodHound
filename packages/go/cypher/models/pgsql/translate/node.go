@@ -30,10 +30,10 @@ func (s *Translator) translateNodePattern(scope *Scope, nodePattern *cypher.Node
 	} else if err := s.translateNodePatternToStep(scope, part, bindingResult); err != nil {
 		return err
 	} else {
-		if len(s.intermediates.properties) > 0 {
+		if len(s.query.CurrentPart().properties) > 0 {
 			var propertyConstraints pgsql.Expression
 
-			for key, value := range s.intermediates.properties {
+			for key, value := range s.query.CurrentPart().properties {
 				propertyConstraints = pgsql.OptionalAnd(propertyConstraints, pgsql.NewBinaryExpression(
 					pgsql.NewPropertyLookup(pgsql.CompoundIdentifier{bindingResult.Binding.Identifier, pgsql.ColumnProperties}, pgsql.NewLiteral(key, pgsql.Text)),
 					pgsql.OperatorEquals,
@@ -211,7 +211,7 @@ func (s *Translator) buildNodePattern(scope *Scope, part *PatternPart) error {
 		})
 
 		// Prepare the next select statement
-		s.query.Tail.Model.AddCTE(pgsql.CommonTableExpression{
+		s.query.CurrentPart().Model.AddCTE(pgsql.CommonTableExpression{
 			Alias: pgsql.TableAlias{
 				Name: part.NodeSelect.Frame.Binding.Identifier,
 			},
