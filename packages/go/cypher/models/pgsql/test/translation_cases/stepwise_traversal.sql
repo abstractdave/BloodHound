@@ -315,6 +315,17 @@ with s0 as (select (n0.id, n0.kind_ids, n0.properties)::nodecomposite           
 select s0.n1 as n2
 from s0;
 
+-- case: match (n1)-[]->(n2) where n2 <> n1 return n2
+with s0 as (select (n0.id, n0.kind_ids, n0.properties)::nodecomposite                        as n0,
+                   (e0.id, e0.start_id, e0.end_id, e0.kind_id, e0.properties)::edgecomposite as e0,
+                   (n1.id, n1.kind_ids, n1.properties)::nodecomposite                        as n1
+            from edge e0
+                   join node n0 on n0.id = e0.start_id
+                   join node n1 on n1.id = e0.end_id
+            where n1.id <> n0.id)
+select s0.n1 as n2
+from s0;
+
 -- case: match ()-[r]->()-[e]->(n) where r <> e return n
 with s0 as (select (n0.id, n0.kind_ids, n0.properties)::nodecomposite                        as n0,
                    (e0.id, e0.start_id, e0.end_id, e0.kind_id, e0.properties)::edgecomposite as e0,

@@ -24,6 +24,5 @@ with s1 as (select s0.target as target, (n0.id, n0.kind_ids, n0.properties)::nod
 select s1.n0 as n
 from s1;
 
--- exclusive:
--- case: match (n:NodeKind1) where n.value = 1 with n match (b) where id(b) = id(n) return b
-;
+-- todo: match (n:NodeKind1) where n.value = 1 with n match (b) where id(b) = id(n) return b
+-- ;
