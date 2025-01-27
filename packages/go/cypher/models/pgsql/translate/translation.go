@@ -333,7 +333,8 @@ func (s *Translator) translateProjectionItem(scope *Scope, projectionItem *cyphe
 			s.query.CurrentPart().CurrentProjection().SetAlias(alias)
 
 			if _, bound := scope.Lookup(alias); !bound {
-				scope.Alias(alias, scope.Define(alias, pgsql.UnknownDataType))
+				// TODO: This type could be better inferred
+				scope.Alias(alias, scope.Define(alias, pgsql.InlineProjection))
 			}
 		}
 

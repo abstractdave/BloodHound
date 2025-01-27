@@ -67,12 +67,16 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 
 	case *cypher.MultiPartQuery:
 	case *cypher.MultiPartQueryPart:
-		s.query.PreparePart()
+		if err := s.query.PreparePart(true); err != nil {
+			s.SetError(err)
+		}
 
 	case *cypher.With:
 
 	case *cypher.SinglePartQuery:
-		s.query.PreparePart()
+		if err := s.query.PreparePart(false); err != nil {
+			s.SetError(err)
+		}
 
 	case *cypher.Match:
 		// Start with a fresh match and where clause. Instantiation of the where clause here is necessary since
@@ -209,12 +213,12 @@ func (s *Translator) Enter(expression cypher.SyntaxNode) {
 func (s *Translator) Exit(expression cypher.SyntaxNode) {
 	switch typedExpression := expression.(type) {
 	case *cypher.NodePattern:
-		if err := s.translateNodePattern(s.query.Scope, typedExpression, s.query.CurrentPart().pattern.CurrentPart()); err != nil {
+		if err := s.translateNodePattern(typedExpression); err != nil {
 			s.SetError(err)
 		}
 
 	case *cypher.RelationshipPattern:
-		if err := s.translateRelationshipPattern(s.query.Scope, typedExpression, s.query.CurrentPart().pattern.CurrentPart()); err != nil {
+		if err := s.translateRelationshipPattern(typedExpression); err != nil {
 			s.SetError(err)
 		}
 
@@ -227,11 +231,9 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 
 	case *cypher.PatternPredicate:
 		// Retire the predicate scope frames and build the predicate
-		for range s.query.CurrentPart().pattern.CurrentPart().TraversalSteps {
-			s.query.Scope.PopFrame()
-		}
-
-		if err := s.buildPatternPredicate(); err != nil {
+		if err := s.query.Scope.UnwindToFrame(s.query.CurrentPart().pattern.Frame); err != nil {
+			s.SetError(err)
+		} else if err := s.buildPatternPredicate(); err != nil {
 			s.SetError(err)
 		}
 
@@ -419,20 +421,29 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 		}
 
 	case *cypher.Match:
-		if err := s.buildMatch(s.query.CurrentPart().match.Scope); err != nil {
+		if err := s.buildMatch(); err != nil {
+			s.SetError(err)
+		}
+
+	case *cypher.With:
+		if err := s.translateWith(typedExpression); err != nil {
 			s.SetError(err)
 		}
 
 	case *cypher.MultiPartQueryPart:
+		if err := s.translateMultiPartQueryPart(s.query.Scope, typedExpression); err != nil {
+			s.SetError(err)
+		}
+
+	case *cypher.SinglePartQuery:
+		if err := s.buildSinglePartQuery(typedExpression); err != nil {
+			s.SetError(err)
+		}
+
+		s.translation.Statement = *s.query.CurrentPart().Model
 
 	case *cypher.MultiPartQuery:
-
-	case *cypher.SingleQuery:
-		if typedExpression.SinglePartQuery != nil {
-			if err := s.buildSinglePartQuery(typedExpression.SinglePartQuery); err != nil {
-				s.SetError(err)
-			}
-		} else if err := s.buildMultiPartQuery(); err != nil {
+		if err := s.buildMultiPartQuery(typedExpression.SinglePartQuery); err != nil {
 			s.SetError(err)
 		}
 	}

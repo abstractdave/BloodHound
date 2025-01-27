@@ -155,23 +155,31 @@ type Query struct {
 	Scope *Scope
 }
 
+func (s *Query) HasParts() bool {
+	return len(s.Parts) > 0
+}
+
 func (s *Query) CurrentPart() *QueryPart {
 	return s.Parts[len(s.Parts)-1]
 }
 
-func (s *Query) PreparePart() error {
-	if frame, err := s.Scope.PushFrame(); err != nil {
-		return err
-	} else {
-		s.Parts = append(s.Parts, &QueryPart{
-			frame: frame,
-			Model: &pgsql.Query{
-				CommonTableExpressions: &pgsql.With{},
-			},
-		})
-
-		return nil
+func (s *Query) PreparePart(allocateFrame bool) error {
+	newPart := &QueryPart{
+		Model: &pgsql.Query{
+			CommonTableExpressions: &pgsql.With{},
+		},
 	}
+
+	if allocateFrame {
+		if frame, err := s.Scope.PushFrame(); err != nil {
+			return err
+		} else {
+			newPart.frame = frame
+		}
+	}
+
+	s.Parts = append(s.Parts, newPart)
+	return nil
 }
 
 type QueryPart struct {
@@ -181,12 +189,16 @@ type QueryPart struct {
 	Skip    models.Optional[pgsql.Expression]
 	Limit   models.Optional[pgsql.Expression]
 
-	frame       *Frame
-	properties  map[string]pgsql.Expression
-	pattern     *Pattern
-	match       *Match
-	projections *Projections
-	mutations   *Mutations
+	frame           *Frame
+	properties      map[string]pgsql.Expression
+	pattern         *Pattern
+	match           *Match
+	projections     *Projections
+	mutations       *Mutations
+}
+
+func (s *QueryPart) HasProjections() bool {
+	return s.projections != nil && len(s.projections.Items) > 0
 }
 
 func (s *QueryPart) PrepareProjections(distinct bool) {

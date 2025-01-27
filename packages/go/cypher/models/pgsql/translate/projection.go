@@ -144,6 +144,14 @@ func buildProjection(alias pgsql.Identifier, projected *BoundIdentifier, scope *
 	referenceFrame := scope.ReferenceFrame()
 
 	switch projected.DataType {
+	case pgsql.InlineProjection:
+		return []pgsql.SelectItem{
+			&pgsql.AliasedExpression{
+				Expression: pgsql.CompoundIdentifier{referenceFrame.Binding.Identifier, projected.Identifier},
+				Alias:      pgsql.AsOptionalIdentifier(alias),
+			},
+		}, nil
+
 	case pgsql.ExpansionPath:
 		if scope.IsVisible(projected.Identifier) {
 			return []pgsql.SelectItem{

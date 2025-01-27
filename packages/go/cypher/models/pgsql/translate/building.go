@@ -20,6 +20,30 @@ import (
 	"github.com/specterops/bloodhound/cypher/models/pgsql"
 )
 
+func (s *Translator) buildInlineProjection(scope *Scope, part *QueryPart) (pgsql.Select, error) {
+	var (
+		sqlSelect = pgsql.Select{}
+	)
+
+	// FIXME
+	//sqlSelect.From = []pgsql.FromClause{{
+	//	Source: pgsql.TableReference{
+	//		Name: pgsql.CompoundIdentifier{part.frame.Binding.Identifier},
+	//	},
+	//}}
+
+	if projectionConstraint, err := s.treeTranslator.ConsumeAll(); err != nil {
+		return sqlSelect, err
+	} else if projection, err := buildExternalProjection(scope, part.projections.Items); err != nil {
+		return sqlSelect, err
+	} else {
+		sqlSelect.Projection = projection
+		sqlSelect.Where = projectionConstraint.Expression
+	}
+
+	return sqlSelect, nil
+}
+
 func (s *Translator) buildTailProjection(scope *Scope) error {
 	var (
 		singlePartQuerySelect = pgsql.Select{}
@@ -57,17 +81,17 @@ func (s *Translator) buildTailProjection(scope *Scope) error {
 	return nil
 }
 
-func (s *Translator) buildMatch(scope *Scope) error {
+func (s *Translator) buildMatch() error {
 	for _, part := range s.query.CurrentPart().match.Pattern.Parts {
 		// Pattern can't be in scope at time of select as the pattern's scope directly depends on the
 		// pattern parts
-		if err := s.buildPatternPart(scope, part); err != nil {
+		if err := s.buildPatternPart(part); err != nil {
 			return err
 		}
 
 		// Declare the pattern variable in scope if set
 		if part.PatternBinding.Set {
-			scope.Declare(part.PatternBinding.Value.Identifier)
+			s.query.Scope.Declare(part.PatternBinding.Value.Identifier)
 		}
 	}
 

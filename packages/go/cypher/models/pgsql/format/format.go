@@ -18,6 +18,7 @@ package format
 
 import (
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -1060,6 +1061,10 @@ func formatDeleteStatement(builder *OutputBuilder, sqlDelete pgsql.Delete) error
 }
 
 func Statement(statement pgsql.Statement, builder *OutputBuilder) (string, error) {
+	defer func() {
+		slog.Info(builder.Build())
+	}()
+
 	switch typedStatement := statement.(type) {
 	case pgsql.Merge:
 		if err := formatMergeStatement(builder, typedStatement); err != nil {

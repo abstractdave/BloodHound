@@ -24,16 +24,21 @@ import (
 	"github.com/specterops/bloodhound/cypher/models/pgsql"
 )
 
-func (s *Translator) translateNodePattern(scope *Scope, nodePattern *cypher.NodePattern, part *PatternPart) error {
-	if bindingResult, err := s.bindPatternExpression(scope, nodePattern, pgsql.NodeComposite); err != nil {
+func (s *Translator) translateNodePattern(nodePattern *cypher.NodePattern) error {
+	var (
+		queryPart   = s.query.CurrentPart()
+		patternPart = queryPart.pattern.CurrentPart()
+	)
+
+	if bindingResult, err := s.bindPatternExpression(nodePattern, pgsql.NodeComposite); err != nil {
 		return err
-	} else if err := s.translateNodePatternToStep(scope, part, bindingResult); err != nil {
+	} else if err := s.translateNodePatternToStep(patternPart, bindingResult); err != nil {
 		return err
 	} else {
-		if len(s.query.CurrentPart().properties) > 0 {
+		if len(queryPart.properties) > 0 {
 			var propertyConstraints pgsql.Expression
 
-			for key, value := range s.query.CurrentPart().properties {
+			for key, value := range queryPart.properties {
 				propertyConstraints = pgsql.OptionalAnd(propertyConstraints, pgsql.NewBinaryExpression(
 					pgsql.NewPropertyLookup(pgsql.CompoundIdentifier{bindingResult.Binding.Identifier, pgsql.ColumnProperties}, pgsql.NewLiteral(key, pgsql.Text)),
 					pgsql.OperatorEquals,
@@ -41,7 +46,7 @@ func (s *Translator) translateNodePattern(scope *Scope, nodePattern *cypher.Node
 				))
 			}
 
-			if err := part.Constraints.Constrain(pgsql.AsIdentifierSet(bindingResult.Binding.Identifier), propertyConstraints); err != nil {
+			if err := patternPart.Constraints.Constrain(pgsql.AsIdentifierSet(bindingResult.Binding.Identifier), propertyConstraints); err != nil {
 				return err
 			}
 		}
@@ -58,7 +63,7 @@ func (s *Translator) translateNodePattern(scope *Scope, nodePattern *cypher.Node
 					kindIDsLiteral,
 				)
 
-				if err := part.Constraints.Constrain(pgsql.AsIdentifierSet(bindingResult.Binding.Identifier), expression); err != nil {
+				if err := patternPart.Constraints.Constrain(pgsql.AsIdentifierSet(bindingResult.Binding.Identifier), expression); err != nil {
 					return err
 				}
 			}
@@ -68,7 +73,7 @@ func (s *Translator) translateNodePattern(scope *Scope, nodePattern *cypher.Node
 	return nil
 }
 
-func (s *Translator) translateNodePatternToStep(scope *Scope, part *PatternPart, bindingResult BindingResult) error {
+func (s *Translator) translateNodePatternToStep(part *PatternPart, bindingResult BindingResult) error {
 	if part.IsTraversal {
 		if numSteps := len(part.TraversalSteps); numSteps == 0 {
 			// This is the traversal step's left node
@@ -96,13 +101,13 @@ func (s *Translator) translateNodePatternToStep(scope *Scope, part *PatternPart,
 			// This is part of a continuing pattern element chain. Inspect the previous edge pattern to see if this
 			// is the terminal node of an expansion.
 			if currentStep.Expansion.Set {
-				if stepFrame, err := scope.PushFrame(); err != nil {
+				if stepFrame, err := s.query.Scope.PushFrame(); err != nil {
 					return err
 				} else {
 					currentStep.Expansion.Value.Frame = stepFrame
 				}
 
-				if boundProjections, err := buildVisibleScopeProjections(scope, currentStep.Definitions); err != nil {
+				if boundProjections, err := buildVisibleScopeProjections(s.query.Scope, currentStep.Definitions); err != nil {
 					return err
 				} else {
 					currentStep.Expansion.Value.Projection = boundProjections.Items
@@ -117,13 +122,13 @@ func (s *Translator) translateNodePatternToStep(scope *Scope, part *PatternPart,
 					bindingResult.Binding.Link(expansionBinding)
 				}
 			} else {
-				if stepFrame, err := scope.PushFrame(); err != nil {
+				if stepFrame, err := s.query.Scope.PushFrame(); err != nil {
 					return err
 				} else {
 					currentStep.Frame = stepFrame
 				}
 
-				if boundProjections, err := buildVisibleScopeProjections(scope, currentStep.Definitions); err != nil {
+				if boundProjections, err := buildVisibleScopeProjections(s.query.Scope, currentStep.Definitions); err != nil {
 					return err
 				} else {
 					currentStep.Projection = boundProjections.Items
@@ -132,7 +137,7 @@ func (s *Translator) translateNodePatternToStep(scope *Scope, part *PatternPart,
 		}
 	} else {
 		// If this isn't a traversal
-		if nodeFrame, err := scope.PushFrame(); err != nil {
+		if nodeFrame, err := s.query.Scope.PushFrame(); err != nil {
 			return err
 		} else {
 			part.NodeSelect.Frame = nodeFrame
@@ -142,7 +147,7 @@ func (s *Translator) translateNodePatternToStep(scope *Scope, part *PatternPart,
 		if bindingResult.AlreadyBound {
 			part.NodeSelect.IsDefinition = false
 
-			if boundProjections, err := buildVisibleScopeProjections(scope, nil); err != nil {
+			if boundProjections, err := buildVisibleScopeProjections(s.query.Scope, nil); err != nil {
 				return err
 			} else {
 				part.NodeSelect.Select.Projection = boundProjections.Items
@@ -150,7 +155,7 @@ func (s *Translator) translateNodePatternToStep(scope *Scope, part *PatternPart,
 		} else {
 			part.NodeSelect.IsDefinition = true
 
-			if boundProjections, err := buildVisibleScopeProjections(scope, []*BoundIdentifier{bindingResult.Binding}); err != nil {
+			if boundProjections, err := buildVisibleScopeProjections(s.query.Scope, []*BoundIdentifier{bindingResult.Binding}); err != nil {
 				return err
 			} else {
 				part.NodeSelect.Select.Projection = boundProjections.Items
@@ -179,7 +184,7 @@ func consumeConstraintsFrom(visible *pgsql.IdentifierSet, trackers ...*Constrain
 	return constraint, nil
 }
 
-func (s *Translator) buildNodePattern(scope *Scope, part *PatternPart) error {
+func (s *Translator) buildNodePattern(part *PatternPart) error {
 	var (
 		nextSelect pgsql.Select
 	)

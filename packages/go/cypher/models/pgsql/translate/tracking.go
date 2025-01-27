@@ -238,9 +238,19 @@ func (s *ConstraintTracker) Constrain(dependencies *pgsql.IdentifierSet, constra
 
 // Frame represents a snapshot of all identifiers defined and visible in a given scope
 type Frame struct {
+	id       int
 	Previous *Frame
 	Binding  *BoundIdentifier
 	Visible  *pgsql.IdentifierSet
+	Exported *pgsql.IdentifierSet
+}
+
+func (s *Frame) Export(identifier pgsql.Identifier) {
+	if s.Exported == nil {
+		s.Exported = pgsql.NewIdentifierSet()
+	}
+
+	s.Exported.Add(identifier)
 }
 
 // Scope contains all identifier definitions and their temporal resolutions in a []*Frame field.
@@ -253,6 +263,7 @@ type Frame struct {
 // all visible projections. This is required when disambiguating references that otherwise belong to
 // a frame.
 type Scope struct {
+	nextFrameID int
 	stack       []*Frame
 	generator   IdentifierGenerator
 	aliases     map[pgsql.Identifier]pgsql.Identifier
@@ -261,6 +272,7 @@ type Scope struct {
 
 func NewScope() *Scope {
 	return &Scope{
+		nextFrameID: 0,
 		generator:   NewIdentifierGenerator(),
 		aliases:     map[pgsql.Identifier]pgsql.Identifier{},
 		definitions: map[pgsql.Identifier]*BoundIdentifier{},
@@ -291,15 +303,38 @@ func (s *Scope) ReferenceFrame() *Frame {
 	return s.CurrentFrame()
 }
 
-func (s *Scope) PopFrame() *Frame {
-	frame := s.stack[len(s.stack)-1]
-	s.stack = s.stack[:len(s.stack)-1]
+func (s *Scope) PopFrame() error {
+	if len(s.stack) <= 0 {
+		return fmt.Errorf("no frame to pop")
+	}
 
-	return frame
+	s.stack = s.stack[:len(s.stack)-1]
+	return nil
+}
+
+func (s *Scope) UnwindToFrame(frame *Frame) error {
+	found := false
+
+	for idx := len(s.stack) - 1; idx >= 0; idx-- {
+		if found = s.stack[idx].id == frame.id; found {
+			s.stack = s.stack[:idx+1]
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("unable to pop frame with ID %d", frame.id)
+	}
+
+	return nil
 }
 
 func (s *Scope) PushFrame() (*Frame, error) {
-	newFrame := &Frame{}
+	newFrame := &Frame{
+		id: s.nextFrameID,
+	}
+
+	s.nextFrameID += 1
 
 	if nextScopeBinding, err := s.DefineNew(pgsql.Scope); err != nil {
 		return nil, err
@@ -312,7 +347,11 @@ func (s *Scope) PushFrame() (*Frame, error) {
 			newFrame.Previous = s.stack[len(s.stack)-1]
 		}
 
-		newFrame.Visible = currentFrame.Visible.Copy()
+		if currentFrame.Exported != nil {
+			newFrame.Visible = currentFrame.Exported.Copy()
+		} else {
+			newFrame.Visible = currentFrame.Visible.Copy()
+		}
 	} else {
 		newFrame.Visible = pgsql.NewIdentifierSet()
 	}

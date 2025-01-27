@@ -14,13 +14,16 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
--- Left off here - scope hand off is next and rendering the parts
+-- exclusive:
 -- case: with 1 as target match (n:NodeKind1) where n.value = target return n
 with s0 as (select 1 as target)
-with s1 as (select (n0.id, n0.kind_ids, n0.properties)::nodecomposite as n0, target as target
-            from s0,
-                 node n0
-            where n0.kind_ids operator (pg_catalog.&&) array [1]::int2[])
+with s1 as (select (n0.id, n0.kind_ids, n0.properties)::nodecomposite as n0
+            from node n0,
+                 s0
+            where n0.kind_ids operator (pg_catalog.&&) array [1]::int2[]
+              and n0.properties -> 'value' = s0.target)
 select s1.n0 as n
-from s1
-where n0.properties ->> 'value' = s1.target;
+from s1;
+
+-- case: match (n:NodeKind1) where n.value = 1 with n match (b) where id(b) = id(n) return b
+;
