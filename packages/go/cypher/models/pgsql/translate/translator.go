@@ -426,7 +426,7 @@ func (s *Translator) Exit(expression cypher.SyntaxNode) {
 		}
 
 	case *cypher.With:
-		if err := s.translateWith(typedExpression); err != nil {
+		if err := s.translateWith(); err != nil {
 			s.SetError(err)
 		}
 

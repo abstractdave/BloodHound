@@ -342,6 +342,8 @@ func (s *Scope) PushFrame() (*Frame, error) {
 		newFrame.Binding = nextScopeBinding
 	}
 
+	// FIXME
+	// Frame has already been popped making this check all but useless
 	if currentFrame := s.CurrentFrame(); currentFrame != nil {
 		if len(s.stack) > 0 {
 			newFrame.Previous = s.stack[len(s.stack)-1]

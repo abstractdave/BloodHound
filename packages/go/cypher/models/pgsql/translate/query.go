@@ -72,7 +72,7 @@ func (s *Translator) buildMultiPartQuery(singlePartQuery *cypher.SinglePartQuery
 	return nil
 }
 
-func (s *Translator) translateWith(with *cypher.With) error {
+func (s *Translator) translateWith() error {
 	currentPart := s.query.CurrentPart()
 
 	if currentPart.HasProjections() {
@@ -91,21 +91,6 @@ func (s *Translator) translateWith(with *cypher.With) error {
 func (s *Translator) translateMultiPartQueryPart(scope *Scope, part *cypher.MultiPartQueryPart) error {
 	queryPart := s.query.CurrentPart()
 
-	//if boundProjections, err := buildVisibleScopeProjections(scope, nil); err != nil {
-	//	return err
-	//} else {
-	//	for _, boundProjection := range boundProjections.Items {
-	//		queryPart.projections.Add(&Projection{
-	//			SelectItem: boundProjection,
-	//		})
-	//	}
-	//}
-
 	// Unwind nested frames
-	if err := scope.UnwindToFrame(queryPart.frame); err != nil {
-		return err
-	}
-
-	// Pop the multipart query part's frame last
-	return scope.PopFrame()
+	return scope.UnwindToFrame(queryPart.frame)
 }
