@@ -80,20 +80,20 @@
     {
       "group": "Get Started with BloodHound",
       "pages": [
-        "hc/en-us/get-started/introduction-to-bloodhound",
+        "introduction-to-bloodhound",
         {
           "group": "Quickstart",
           "pages": [
-            "hc/en-us/get-started/bloodhound-enterprise-quickstart",
-            "hc/en-us/get-started/bloodhound-community-edition-quickstart"
+            "get-started/bloodhound-enterprise-quickstart",
+            "get-started/bloodhound-community-edition-quickstart"
           ]
         },
         {
           "group": "BloodHound and Security Boundaries",
           "pages": [
-            "hc/en-us/articles/BloodHound-Enterprise-Security-Overview",
-            "hc/en-us/articles/Modifying-Tier-Zero",
-            "hc/en-us/articles/Tier-Zero-Members-and-Modification"
+            "get-started/BloodHound-Enterprise-Security-Overview",
+            "get-started/Modifying-Tier-Zero",
+            "get-started/Tier-Zero-Members-and-Modification"
           ]
         }
       ]
